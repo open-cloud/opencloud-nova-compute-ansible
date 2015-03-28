@@ -1,0 +1,116 @@
+#!/bin/bash
+#
+# opencloud-net  sets up opencloud-net and watcher
+#
+# chkconfig: 2345 4 99
+#
+# description:  sets up opencloud-net and watcher
+#
+# $Id:$
+#
+### BEGIN INIT INFO
+# Provides: $opencloud-net
+# Required-Start: $opencloud-net
+# Required-Stop: $opencloud-net
+# Default-Stop: 0 1 2 3 4 5 6
+# Default-Start: 2 3 4 5
+### END INIT INFO
+
+. /lib/lsb/init-functions
+
+# Verbosity
+verbose=0
+
+start (){
+    python /usr/local/sbin/opencloud-net-watcher.py -d
+}
+
+stop (){
+    pkill -f "python.*opencloud-net-watcher.py"
+}
+
+usage(){
+    echo "Usage: $0 [OPTION]... COMMAND"
+    echo "      -v              Be verbose"
+    echo "      -h              This message"
+    exit 1
+}
+
+# Get options
+while getopts "vh" opt ; do
+    case $opt in
+        v)
+            verbose=1
+            ;;
+        h|*)
+            usage
+            ;;
+    esac
+done
+
+# Redirect stdout and stderr of each step to /var/log/boot.log
+if [ $verbose -eq 0 ] ; then
+    touch /var/log/boot.log
+    chmod 600 /var/log/boot.log
+    exec 1>>/var/log/boot.log
+    exec 2>>/var/log/boot.log
+fi
+
+# Get command
+shift $(($OPTIND - 1))
+if [ -z "$1" ] ; then
+    usage
+fi
+command=$1
+
+RETVAL=0
+
+case "$command" in
+    start)
+    (
+        echo `/bin/date` "starting opencloud-net-watcher"
+        if flock -n -o 201; then
+        (
+            exec 201>&-
+
+            start
+        )
+        else
+            echo "another restart is already in progress, nothing to do"
+        fi
+    ) 201>/var/run/opencloud-net-watcher.lock
+    ;;
+
+    restart)
+    (
+        echo `/bin/date` "restarting opencloud-net-watcher"
+        if flock -n -o 201; then
+        (
+            exec 201>&-
+
+            stop
+            start
+        )
+        else
+            echo "another restart is already in progress, nothing to do"
+        fi
+    ) 201>/var/run/opencloud-net-watcher.lock
+    ;;
+
+    stop)
+        echo `/bin/date` "stopping opencloud-net-watcher service"
+        stop
+        ;;
+
+    status)
+        echo "not implemented"
+        RETVAL=0
+        ;;
+
+    *)
+        usage >&3
+        RETVAL=1
+        ;;
+esac
+
+exit $RETVAL

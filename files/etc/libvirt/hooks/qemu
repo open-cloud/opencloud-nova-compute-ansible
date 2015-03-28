@@ -1,0 +1,55 @@
+#!/bin/sh
+
+SHELL="/bin/bash"
+
+NAME="${1}"
+OP="${2}"
+SUBOP="${3}"
+ARGS="${4}"
+
+if [ "$OP" = "start" ]
+then
+    # Configure dnsmasq for the new VM
+    python /usr/local/sbin/opencloud-net.py
+    
+    # UUID=`echo $(cat)| xmllint --xpath '/domain/uuid/text()' -`
+    # KEYDIR="/var/lib/nova/keys/"
+    # KEYS="$KEYDIR/$UUID.pub"
+    KEYS="/var/lib/nova/keys/$NAME.pub"
+    HOMEDIR="/home/$NAME"
+    
+    /bin/grep -i "^slices:" /etc/group > /dev/null
+    if [ $? -eq 1 ]
+    then
+	/usr/sbin/groupadd slices
+    fi
+
+    /bin/grep -i "^$NAME:" /etc/passwd > /dev/null
+    if [ $? -eq 1 ]
+    then
+	echo "Adding user $NAME" >&2
+	/usr/sbin/useradd -m -g slices -s $SHELL $NAME -p '*'
+	echo "Setting up $HOMEDIR" >&2
+	mkdir $HOMEDIR/.ssh
+	chmod 0700 $HOMEDIR/.ssh
+	
+	if [ -f $KEYS ]
+	then
+	    echo "Grabbing keys file for $NAME" >&2
+	    /bin/cp $KEYS $HOMEDIR/.ssh/authorized_keys
+	    chmod 0600 $HOMEDIR/.ssh/authorized_keys
+	else 
+	    echo "No keys found for $NAME" >&2
+	fi
+
+	chown -R $NAME:slices $HOMEDIR
+    fi
+
+elif [ "$OP" = "release" ]
+then
+    # This seems to delete the account at times other than when
+    # the VM is actually deleted in nova?
+    /usr/sbin/userdel -r $NAME
+fi
+
+exit 0

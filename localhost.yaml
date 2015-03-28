@@ -1,0 +1,66 @@
+---
+- hosts: localhost
+  connection: local
+  sudo: yes
+  tasks:
+
+  - name: Package install
+    apt: name={{ item }} state=present update_cache=yes
+    with_items: 
+      - python-netifaces
+      - python-netaddr
+      - dnsmasq-utils
+
+  - name: Base file install
+    copy: src=files/{{ item.name }}
+      dest={{ item.name }}
+      owner=root group=root
+      mode={{ item.mode }}
+    with_items: 
+    - name: /usr/local/sbin/opencloud-net.py
+      mode: 755
+    - name: /usr/local/sbin/opencloud-net-watcher.py
+      mode: 755
+    - name: /etc/init.d/opencloud-net
+      mode: 755
+    - name: /usr/local/sbin/findmyip.py
+      mode: 755
+    - name: /usr/local/sbin/extract-keys.py
+      mode: 755
+
+  - name: Libvirt hooks
+    copy: src=files/{{ item }}
+          dest={{ item }}
+          owner=root group=root
+          mode=755
+    with_items:
+    - /etc/libvirt/hooks/qemu
+    notify:
+    - reload libvirt config
+
+  - name: sshd config
+    copy: src=files/etc/ssh/sshd_config
+          dest=/etc/ssh/sshd_config
+          owner=root group=root
+          mode=644
+    notify:
+    - restart ssh
+
+  - name: crontab entry for extract-keys.py
+    cron: name="extract keys"
+      minute="*/5"
+      job="/usr/local/sbin/extract-keys.py"
+
+  - name: start opencloud-net service at boot
+    shell: update-rc.d opencloud-net defaults
+
+  - name: restart opencloud-net
+    service: name=opencloud-net state=restarted
+
+  handlers:
+  - name: reload libvirt config
+    shell: killall -HUP libvirtd
+
+  - name: restart ssh
+    service: name=ssh state=restarted
+
