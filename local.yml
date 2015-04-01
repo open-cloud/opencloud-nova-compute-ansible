@@ -52,6 +52,13 @@
       minute="*/5"
       job="/usr/local/sbin/extract-keys.py"
 
+  - name: Enable IP forwwarding
+    lineinfile: dest=/etc/sysctl.conf
+      regexp="net.ipv4.ip_forward"
+      line="net.ipv4.ip_forward=1"
+    notify:
+    - reload sysctl
+
   - name: start opencloud-net service at boot
     shell: update-rc.d opencloud-net defaults
 
@@ -65,3 +72,5 @@
   - name: restart ssh
     service: name=ssh state=restarted
 
+  - name: reload sysctl
+    shell: sysctl -p /etc/sysctl.conf
