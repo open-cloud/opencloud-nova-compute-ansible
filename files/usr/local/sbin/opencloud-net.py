@@ -42,8 +42,9 @@ site_net_name = "ext-net"
 
 site_net_dev = None
 # Handle differences between Ubuntu 14.04, 12.04, MAAS, etc.
+# THis works but it's pretty sloppy
 interfaces = netifaces.interfaces()
-for dev in ['br-ex', 'em1', 'br0', 'eth0']:
+for dev in ['br-ex', 'em1', 'br0', 'eth0', 'eth2']:
     if dev in interfaces and 2 in netifaces.ifaddresses(dev):
         site_net_dev = dev
         break

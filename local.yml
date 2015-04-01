@@ -10,6 +10,7 @@
       - python-netifaces
       - python-netaddr
       - dnsmasq-utils
+      - libguestfs-tools
 
   - name: Base file install
     copy: src=files/{{ item.name }}
