@@ -47,6 +47,10 @@
     notify:
     - restart ssh
 
+  - name: create supermin appliance
+    shell: update-guestfs-appliance
+      creates=/usr/lib/guestfs/supermin.d/base.img
+
   - name: crontab entry for extract-keys.py
     cron: name="extract keys"
       minute="*/5"
