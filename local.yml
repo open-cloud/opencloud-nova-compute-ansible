@@ -69,6 +69,52 @@
   - name: restart opencloud-net
     service: name=opencloud-net state=restarted
 
+  # Additions for OVX
+  - name: Turn off neutron-plugin-openvswitch-agent
+    service: name=neutron-plugin-openvswitch-agent state=stopped enabled=no
+
+  - name: Cleanup old ports
+    shell: /usr/bin/neutron-ovs-cleanup --ovs_all_ports
+
+  - name: Delete br-tun
+    openvswitch_bridge: bridge=br-tun state=absent
+
+  - name: Delete old ports
+    openvswitch_port: bridge={{ item.bridge }} port={{ item.port }} state=absent
+    with_items:
+    - bridge: br-nat
+      port: phy-br-nat
+    - bridge: br-int
+      port: int-br-nat
+    - bridge: br-ex
+      port: phy-br-ex
+    - bridge: br-int
+      port: int-br-ex
+
+  - name: Remove default libvirt network (virbr0, 192.168.122.0/24)
+    shell: virsh net-list|grep default || virsh net-destroy default
+
+  # Interface configuration on Stanford cluster
+  - name: Create VLANs
+    shell: ifconfig {{ item.iface }} up; vconfig add {{ item.iface }} {{ item.vlan }}; ifconfig {{ item.iface }}.{{ item.vlan }} up
+    with_items:
+    - iface: eth3
+      vlan: 485
+    - iface: eth8
+      vlan: 0
+    - iface: eth3
+      vlan: 429
+
+  - name: Add VLANs to bridges
+    openvswitch_port: bridge={{ item.bridge }} port={{ item.port }} state=present
+    with_items:
+    - bridge: br-ctl
+      port: eth3.485
+    - bridge: br-int
+      port: eth8.0
+    - bridge: br-ex
+      port: eth3.429
+
   handlers:
   - name: reload libvirt config
     shell: killall -HUP libvirtd
