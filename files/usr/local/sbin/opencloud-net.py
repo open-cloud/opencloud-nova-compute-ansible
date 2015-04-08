@@ -179,7 +179,7 @@ def dnsmasq_sighup(dev):
 # Enable dnsmasq for this interface.
 # It's possible that we could get by with a single instance of dnsmasq running on
 # all devices but I haven't tried it.
-def start_dnsmasq(dev, ipaddr, forward_dns=True, authoritative=False):
+def start_dnsmasq(dev, ipaddr, forward_dns=True, authoritative=False, dns_addr=None):
     if not dnsmasq_running(dev):
         # The '--dhcp-range=<IP addr>,static' argument to dnsmasq ensures that it only
         # hands out IP addresses to clients listed in the hostsfile
@@ -203,6 +203,10 @@ def start_dnsmasq(dev, ipaddr, forward_dns=True, authoritative=False):
         # Turn off forwarding DNS queries, only do DHCP
         if forward_dns == False:
             cmd.append('--port=0')
+
+        # Tell the guest's resolver to use a particular DNS server
+        if dns_addr:
+            cmd.append("--dhcp-option=6,%s" % dns_addr)
 
         try:
             print('%s: starting dnsmasq on device %s' % (plugin, dev))
@@ -433,7 +437,7 @@ def main(argv):
         write_dnsmasq_hostsfile(site_net_dev, ports, site_net_id)
         (ipaddr, cidr) = get_addrinfo(site_net_dev)
         block_remote_dns_queries(ipaddr, cidr)
-        start_dnsmasq(site_net_dev, ipaddr, authoritative=True)
+        start_dnsmasq(site_net_dev, ipaddr, authoritative=True, forward_dns=False, dns_addr="8.8.8.8")
 
     fix_udp_mangle()
 
