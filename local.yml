@@ -96,24 +96,27 @@
 
   # Interface configuration on Stanford cluster
   - name: Create VLANs
-    shell: ifconfig {{ item.iface }} up; vconfig add {{ item.iface }} {{ item.vlan }}; ifconfig {{ item.iface }}.{{ item.vlan }} up
+    script: scripts/add-vlan.sh {{ item.iface }} {{ item.vlan }}
     with_items:
-    - iface: eth3
+    - iface: eth1
       vlan: 485
-    - iface: eth8
+    - iface: p4p1
       vlan: 0
-    - iface: eth3
+    - iface: eth1
       vlan: 429
 
   - name: Add VLANs to bridges
     openvswitch_port: bridge={{ item.bridge }} port={{ item.port }} state=present
     with_items:
     - bridge: br-ctl
-      port: eth3.485
+      port: eth1.485
     - bridge: br-int
-      port: eth8.0
+      port: p4p1.0
     - bridge: br-ex
-      port: eth3.429
+      port: eth1.429
+
+  - name: Unique IP address for br-ctl in 192.168.83.x/24, x < 20
+    script: scripts/set-br-ctl-ip.sh
 
   handlers:
   - name: reload libvirt config
