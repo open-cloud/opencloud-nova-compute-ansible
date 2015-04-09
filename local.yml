@@ -92,7 +92,7 @@
       port: int-br-ex
 
   - name: Remove default libvirt network (virbr0, 192.168.122.0/24)
-    shell: virsh net-list|grep default || virsh net-destroy default
+    shell: virsh net-list|grep default && virsh net-destroy default
 
   # Interface configuration on Stanford cluster
   - name: Create VLANs
