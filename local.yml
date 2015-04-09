@@ -94,6 +94,14 @@
   - name: Remove default libvirt network (virbr0, 192.168.122.0/24)
     shell: virsh net-list|grep default; if [ "$?" -eq 0 ]; then virsh net-destroy default; fi
 
+  - name: Check that all bridges are present
+    openvswitch_bridge: bridge={{ item }} state=present
+    with_items:
+    - br-int
+    - br-nat
+    - br-ex
+    - br-ctl
+
   # Interface configuration on Stanford cluster
   - name: Create VLANs
     script: scripts/add-vlan.sh {{ item.iface }} {{ item.vlan }}
