@@ -4,6 +4,7 @@ import libvirt
 import os
 import subprocess
 import pwd, grp
+import traceback
 
 conn = libvirt.openReadOnly(None)
 
@@ -12,7 +13,13 @@ for dom in conn.listAllDomains():
         if dom.isActive() and os.path.isdir(sshdir):
                 keyfile = sshdir + 'authorized_keys'
                 cmd = "guestfish --ro -d %s -i cat /home/ubuntu/.ssh/authorized_keys" % dom.name()
-                keys = subprocess.check_output(cmd, shell=True)
+                try:
+                    keys = subprocess.check_output(cmd, shell=True)
+                except:
+                    print "exception which running guestfish"
+                    traceback.print_exc()
+                    continue
+
                 f = open(keyfile, 'w')
                 f.write(keys)
                 f.close()
