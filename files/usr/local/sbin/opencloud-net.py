@@ -372,6 +372,12 @@ def block_remote_dns_queries(ipaddr, cidr):
                             ['!', '-s', cidr, '-d', ipaddr, '-p', proto,
                             '--dport', '53', '-j', 'DROP'])
 
+def allow_remote_dns_queries(ipaddr, cidr):
+    for proto in ['tcp', 'udp']:
+        del_iptables_rule('filter', 'INPUT',
+                            ['!', '-s', cidr, '-d', ipaddr, '-p', proto,
+                            '--dport', '53', '-j', 'DROP'])
+
 def start():
     global neutron_username
     global neutron_password
@@ -436,7 +442,12 @@ def main(argv):
     if site_net_id:
         write_dnsmasq_hostsfile(site_net_dev, ports, site_net_id)
         (ipaddr, cidr) = get_addrinfo(site_net_dev)
-        block_remote_dns_queries(ipaddr, cidr)
+
+        # blocking remote queries isn't needed now that DNS is not listening on
+        # the host's IP
+        #block_remote_dns_queries(ipaddr, cidr)
+        allow_remote_dns_queries(ipaddr, cidr)
+
         start_dnsmasq(site_net_dev, ipaddr, authoritative=True, forward_dns=False, dns_addr="8.8.8.8")
 
     fix_udp_mangle()
