@@ -29,6 +29,20 @@
     - name: /usr/local/sbin/extract-keys.py
       mode: 755
 
+  - name: Blacklist KVM modules
+    copy: src=files/{{ item }}
+          dest={{ item }}
+          owner=root group=root
+          mode=755
+    with_items:
+    - /etc/modprobe.d/blacklist-kvm.conf
+
+  - name: Remove KVM modules
+    modprobe: name={{ item }} state=absent
+    with_items:
+    - kvm
+    - kvm-intel
+
   - name: Libvirt hooks
     copy: src=files/{{ item }}
           dest={{ item }}
