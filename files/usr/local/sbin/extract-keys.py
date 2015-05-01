@@ -78,6 +78,7 @@ conn = libvirt.openReadOnly(None)
 
 for dom in conn.listAllDomains():
     if dom.isActive():
+        sync_storage(dom)
         success = extract_ubuntu_keys(dom.name())
         if success:
             print "%s: Extracting Ubuntu keys\t[OK]" % dom.name()
