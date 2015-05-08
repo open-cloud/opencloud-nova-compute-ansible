@@ -40,6 +40,8 @@ for instance in keyinfo:
         uid = pwd.getpwnam(instance['id']).pw_uid
         gid = grp.getgrnam('slices').gr_gid
         os.chown(keyfile, uid, gid)
+
+        print "%s: Installing SSH keys\t[OK]" % instance['id']
     except:
         print "%s: Installing SSH keys\t[FAILED]" % instance['id']
         pass
