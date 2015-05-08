@@ -30,7 +30,7 @@ for instance in keyinfo:
             print "%s: %s doesn't exist, skipping" % (instance['id'], keydir)
             continue
     
-        keyfile = keydir + "authorized_keys_test"
+        keyfile = keydir + "authorized_keys"
         f = open(keyfile, 'w')
         for key in instance['public_keys']:
             f.write(key + '\n')
