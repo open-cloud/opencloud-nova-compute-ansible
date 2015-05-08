@@ -10,7 +10,6 @@
       - python-netifaces
       - python-netaddr
       - dnsmasq-utils
-      - libguestfs-tools
 
   - name: Base file install
     copy: src=files/{{ item.name }}
@@ -26,22 +25,8 @@
       mode: 755
     - name: /usr/local/sbin/findmyip.py
       mode: 755
-    - name: /usr/local/sbin/extract-keys.py
+    - name: /usr/local/sbin/download-keys.py
       mode: 755
-
-  #- name: Blacklist KVM modules
-  #  copy: src=files/{{ item }}
-  #        dest={{ item }}
-  #        owner=root group=root
-  #        mode=755
-  #  with_items:
-  #  - /etc/modprobe.d/blacklist-kvm.conf
-
-  #- name: Remove KVM modules
-  #  modprobe: name={{ item }} state=absent
-  #  with_items:
-  #  - kvm
-  #  - kvm-intel
 
   - name: Libvirt hooks
     copy: src=files/{{ item }}
@@ -61,14 +46,16 @@
     notify:
     - restart ssh
 
-  - name: create supermin appliance
-    shell: update-guestfs-appliance
-      creates=/usr/lib/guestfs/supermin.d/base.img
+  - name: crontab entry for download-keys.py
+    cron: name="download keys from XOS"
+      minute="*/5"
+      job="/usr/local/sbin/download-keys.py"
 
-  - name: crontab entry for extract-keys.py
+  - name: Remove crontab entry for extract-keys.py
     cron: name="extract keys"
       minute="*/5"
       job="/usr/local/sbin/extract-keys.py"
+      state=absent
 
   - name: Enable IP forwwarding
     lineinfile: dest=/etc/sysctl.conf
