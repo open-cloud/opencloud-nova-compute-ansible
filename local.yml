@@ -70,6 +70,19 @@
   - name: restart opencloud-net
     service: name=opencloud-net state=restarted
 
+  # Additions for CORD demo
+  - name: Add LAN bridge to port 1 on new NIC
+    openvswitch_port: bridge=br-lan port=p1p1
+
+  - name: Add WAN bridge to port 2 on new NIC
+    openvswitch_port: bridge=br-wan port=p1p2
+
+  - name: NIC ports are up
+    shell: ifconfig {{ item }} up
+    with_items:
+    - p1p1
+    - p1p2
+
   handlers:
   - name: reload libvirt config
     shell: killall -HUP libvirtd
