@@ -28,6 +28,7 @@ import subprocess, signal
 import json
 from ConfigParser import ConfigParser
 import socket, netifaces, netaddr
+import re
 
 # Neutron modules
 from neutronclient.v2_0 import client
@@ -39,8 +40,13 @@ nat_net_dev = "br-nat"
 nat_net_id = None
 
 site_net_name = "ext-net"
-
 site_net_dev = None
+site_net_id = None
+
+lan_net_name = "lan-net"
+lan_net_dev = "br-lan"
+lan_net_id = None
+
 # Handle differences between Ubuntu 14.04, 12.04, MAAS, etc.
 # THis works but it's pretty sloppy
 interfaces = netifaces.interfaces()
@@ -48,8 +54,6 @@ for dev in ['br-ex', 'em1', 'br0', 'eth0', 'eth2']:
     if dev in interfaces and 2 in netifaces.ifaddresses(dev):
         site_net_dev = dev
         break
-
-site_net_id = None
 
 neutron_auth_url = None
 neutron_username = None
@@ -73,6 +77,33 @@ def get_addrinfo(ifname):
     netmask = ipinfo['netmask']
     cidr = netaddr.IPNetwork('%s/%s' % (address, netmask))
     return (address, str(cidr.cidr))
+
+def get_iface_by_mac(mac):
+    for iface in netifaces.interfaces():
+        addrs = netifaces.ifaddresses(iface)
+        iface_mac = addrs[netifaces.AF_LINK][0]["addr"]
+        if iface_mac == mac:
+            return iface
+    return None
+
+def move_port(tap_iface, frombridge, tobridge):
+    print "%s: Move %s from %s to %s" % (plugin, tap_iface, frombridge, tobridge)
+
+    # Save external_ids. They get erased in the move.
+    cmd = ['/usr/bin/ovs-vsctl', 'get', 'Interface', tap_iface, 'external_ids']
+    external_ids = subprocess.check_output(cmd).rstrip()
+    # print external_ids
+
+    cmd = ['/usr/bin/ovs-vsctl', 'del-port', tap_iface]
+    subprocess.check_call(cmd)
+
+    cmd = ['/usr/bin/ovs-vsctl', 'add-port', tobridge, tap_iface]
+    subprocess.check_call(cmd)
+
+    # Restore external ids.
+    cmd = ['/usr/bin/ovs-vsctl', 'set', 'Interface', tap_iface,
+           "external_ids=%s" % external_ids]
+    subprocess.check_call(cmd)
 
 # Should possibly be using python-iptables for this stuff
 def run_iptables_cmd(args):
@@ -378,6 +409,24 @@ def allow_remote_dns_queries(ipaddr, cidr):
                             ['!', '-s', cidr, '-d', ipaddr, '-p', proto,
                             '--dport', '53', '-j', 'DROP'])
 
+def move_lan_ports(dev, ports, net_id):
+    print("%s: Moving LAN ports to %s" % (plugin, dev))
+
+    for port in ports:
+        if port['network_id'] == net_id:
+            tap_mac = re.sub("^fa:","fe:", port['mac_address'])
+            tap_iface = get_iface_by_mac(tap_mac)
+            if tap_iface:
+                cmd = ['/usr/bin/ovs-vsctl', 'port-to-br', tap_iface]
+                bridge = subprocess.check_output(cmd).rstrip()
+                if bridge != dev:
+                    move_port(tap_iface, bridge, dev)
+                else:
+                    print("%s: %s already on %s" % (plugin, tap_iface, dev))
+            else:
+                print("%s: No iface found matching %s" % (plugin, tap_mac))
+
+
 def start():
     global neutron_username
     global neutron_password
@@ -396,6 +445,7 @@ def start():
 def main(argv):
     global nat_net_id
     global site_net_id
+    global lan_net_id
 
     lock_file = open("/var/lock/opencloud-net", "w")
     try:
@@ -423,6 +473,13 @@ def main(argv):
         except:
             print("%s: no network called %s..." % (plugin, site_net_name))
 
+    if not lan_net_id:
+        try:
+            lan_net_id = get_net_id_by_name(lan_net_name)
+            print("%s: %s id is %s..." % (plugin, lan_net_name, lan_net_id))
+        except:
+            print("%s: no network called %s..." % (plugin, lan_net_name))
+
     reset_iptables_chain()
     ports = get_local_neutron_ports()
     # print ports
@@ -449,6 +506,10 @@ def main(argv):
         allow_remote_dns_queries(ipaddr, cidr)
 
         start_dnsmasq(site_net_dev, ipaddr, authoritative=True, forward_dns=False, dns_addr="8.8.8.8")
+
+    # Process LAN network
+    if lan_net_id:
+        move_lan_ports(lan_net_dev, ports, lan_net_id)
 
     fix_udp_mangle()
 
