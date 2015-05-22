@@ -508,8 +508,10 @@ def main(argv):
         start_dnsmasq(site_net_dev, ipaddr, authoritative=True, forward_dns=False, dns_addr="8.8.8.8")
 
     # Process LAN network
+    """
     if lan_net_id:
         move_lan_ports(lan_net_dev, ports, lan_net_id)
+    """
 
     fix_udp_mangle()
 
