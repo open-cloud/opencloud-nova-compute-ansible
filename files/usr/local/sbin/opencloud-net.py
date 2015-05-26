@@ -92,27 +92,47 @@ def get_ofport(iface):
     # print "%s: %s has ofport %s" % (plugin, iface, ofport)
     return ofport
 
-def of_allow_all(bridge, port1, port2):
-    cmd = ['/usr/bin/ovs-ofctl', 'add-flow', bridge, 'in_port=%s,priority=10,action=output:%s' % (port1, port2)]
+def of_allow_all(bridge, inport, outport):
+    cmd = ['/usr/bin/ovs-ofctl', 'add-flow', bridge, 'in_port=%s,priority=10,action=output:%s' % (inport, outport)]
     print cmd
     subprocess.check_call(cmd)
 
-    cmd = ['/usr/bin/ovs-ofctl', 'add-flow', bridge, 'in_port=%s,priority=10,action=output:%s' % (port2, port1)]
+def of_allow_all_multi(bridge, inport, outports):
+    action=""
+    for outport in outports:
+        action = action + "output:%s," % outport
+    cmd = ['/usr/bin/ovs-ofctl', 'add-flow', bridge, 'in_port=%s,priority=10,action=%s' % (inport, action)]
     print cmd
     subprocess.check_call(cmd)
 
-def connect_port_to_lan(tap_iface):
-    print "%s: Add flow rules for %s" % (plugin, tap_iface)
+def of_flush_br_int(int_br_lan_port):
+    # Don't seem to need to flush forwarding rule from int_br_lan_port since it gets replaced later
+    cmd = ['/usr/bin/ovs-ofctl', '--strict', 'del-flows', 'br-int', 'out_port=%s,priority=10' % int_br_lan_port]
+    print cmd
+    subprocess.check_call(cmd)
 
-    # Add flow rules to br-int
-    tap_port = get_ofport(tap_iface)
-    int_br_lan_port = get_ofport('int-br-lan')
-    of_allow_all('br-int', tap_port, int_br_lan_port)
-
+def connect_ports_to_lan(tap_ifaces):
     # Add flow rules to br-lan
     phy_br_lan_port = get_ofport('phy-br-lan')
     p1p1_port = get_ofport('p1p1')
+
     of_allow_all('br-lan', phy_br_lan_port, p1p1_port)
+    of_allow_all('br-lan', p1p1_port, phy_br_lan_port)
+
+    int_br_lan_port = get_ofport('int-br-lan')
+    of_flush_br_int(int_br_lan_port)
+    tap_ports = []
+    for tap_iface in tap_ifaces:
+        print "%s: Add flow rules for %s" % (plugin, tap_iface)
+
+        # Add flow rules to br-int
+        tap_port = get_ofport(tap_iface)
+        tap_ports.append(tap_port)
+        of_allow_all('br-int', tap_port, int_br_lan_port)
+    # This is just acting like a dumb bridge right now
+    # Could add dest MAC addresses or VLANs as an optimization
+    of_allow_all_multi('br-int', int_br_lan_port, tap_ports)
+
 
 # Should possibly be using python-iptables for this stuff
 def run_iptables_cmd(args):
@@ -421,15 +441,18 @@ def allow_remote_dns_queries(ipaddr, cidr):
 def connect_lan_ports(dev, ports, net_id):
     print("%s: Connecting LAN ports to %s" % (plugin, dev))
 
+    lan_ports = []
+
     for port in ports:
         if port['network_id'] == net_id:
             tap_mac = re.sub("^fa:","fe:", port['mac_address'])
             tap_iface = get_iface_by_mac(tap_mac)
             if tap_iface:
-                connect_port_to_lan(tap_iface)
+                lan_ports.append(tap_iface)
             else:
                 print("%s: No iface found matching %s" % (plugin, tap_mac))
 
+    connect_ports_to_lan(lan_ports)
 
 def start():
     global neutron_username
