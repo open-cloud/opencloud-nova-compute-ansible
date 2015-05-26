@@ -86,24 +86,33 @@ def get_iface_by_mac(mac):
             return iface
     return None
 
-def move_port(tap_iface, frombridge, tobridge):
-    print "%s: Move %s from %s to %s" % (plugin, tap_iface, frombridge, tobridge)
+def get_ofport(iface):
+    cmd = ['/usr/bin/ovs-vsctl', 'get', 'interface', iface, 'ofport']
+    ofport = subprocess.check_output(cmd).rstrip()
+    # print "%s: %s has ofport %s" % (plugin, iface, ofport)
+    return ofport
 
-    # Save external_ids. They get erased in the move.
-    cmd = ['/usr/bin/ovs-vsctl', 'get', 'Interface', tap_iface, 'external_ids']
-    external_ids = subprocess.check_output(cmd).rstrip()
-    # print external_ids
-
-    cmd = ['/usr/bin/ovs-vsctl', 'del-port', tap_iface]
+def of_allow_all(bridge, port1, port2):
+    cmd = ['/usr/bin/ovs-ofctl', 'add-flow', bridge, 'in_port=%s,priority=10,action=output:%s' % (port1, port2)]
+    print cmd
     subprocess.check_call(cmd)
 
-    cmd = ['/usr/bin/ovs-vsctl', 'add-port', tobridge, tap_iface]
+    cmd = ['/usr/bin/ovs-ofctl', 'add-flow', bridge, 'in_port=%s,priority=10,action=output:%s' % (port2, port1)]
+    print cmd
     subprocess.check_call(cmd)
 
-    # Restore external ids.
-    cmd = ['/usr/bin/ovs-vsctl', 'set', 'Interface', tap_iface,
-           "external_ids=%s" % external_ids]
-    subprocess.check_call(cmd)
+def connect_port_to_lan(tap_iface):
+    print "%s: Add flow rules for %s" % (plugin, tap_iface)
+
+    # Add flow rules to br-int
+    tap_port = get_ofport(tap_iface)
+    int_br_lan_port = get_ofport('int-br-lan')
+    of_allow_all('br-int', tap_port, int_br_lan_port)
+
+    # Add flow rules to br-lan
+    phy_br_lan_port = get_ofport('phy-br-lan')
+    p1p1_port = get_ofport('p1p1')
+    of_allow_all('br-lan', phy_br_lan_port, p1p1_port)
 
 # Should possibly be using python-iptables for this stuff
 def run_iptables_cmd(args):
@@ -409,20 +418,15 @@ def allow_remote_dns_queries(ipaddr, cidr):
                             ['!', '-s', cidr, '-d', ipaddr, '-p', proto,
                             '--dport', '53', '-j', 'DROP'])
 
-def move_lan_ports(dev, ports, net_id):
-    print("%s: Moving LAN ports to %s" % (plugin, dev))
+def connect_lan_ports(dev, ports, net_id):
+    print("%s: Connecting LAN ports to %s" % (plugin, dev))
 
     for port in ports:
         if port['network_id'] == net_id:
             tap_mac = re.sub("^fa:","fe:", port['mac_address'])
             tap_iface = get_iface_by_mac(tap_mac)
             if tap_iface:
-                cmd = ['/usr/bin/ovs-vsctl', 'port-to-br', tap_iface]
-                bridge = subprocess.check_output(cmd).rstrip()
-                if bridge != dev:
-                    move_port(tap_iface, bridge, dev)
-                else:
-                    print("%s: %s already on %s" % (plugin, tap_iface, dev))
+                connect_port_to_lan(tap_iface)
             else:
                 print("%s: No iface found matching %s" % (plugin, tap_mac))
 
@@ -508,10 +512,8 @@ def main(argv):
         start_dnsmasq(site_net_dev, ipaddr, authoritative=True, forward_dns=False, dns_addr="8.8.8.8")
 
     # Process LAN network
-    """
     if lan_net_id:
-        move_lan_ports(lan_net_dev, ports, lan_net_id)
-    """
+        connect_lan_ports(lan_net_dev, ports, lan_net_id)
 
     fix_udp_mangle()
 
