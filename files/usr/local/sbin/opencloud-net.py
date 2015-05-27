@@ -39,7 +39,8 @@ nat_net_name = "nat-net"
 nat_net_dev = "br-nat"
 nat_net_id = None
 
-site_net_name = "ext-net"
+# For the CORD demo the public network is called wan-net
+site_net_name = "wan-net"
 site_net_dev = None
 site_net_id = None
 
@@ -527,8 +528,7 @@ def main(argv):
         write_dnsmasq_hostsfile(site_net_dev, ports, site_net_id)
         (ipaddr, cidr) = get_addrinfo(site_net_dev)
 
-        # blocking remote queries isn't needed now that DNS is not listening on
-        # the host's IP
+        # blocking remote queries isn't needed now that DNS is not listening on the host's IP
         #block_remote_dns_queries(ipaddr, cidr)
         allow_remote_dns_queries(ipaddr, cidr)
 
