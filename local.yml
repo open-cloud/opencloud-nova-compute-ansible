@@ -48,7 +48,7 @@
 
   - name: crontab entry for download-keys.py
     cron: name="download keys from XOS"
-      minute="*/5"
+      minute="*/1"
       job="/usr/local/sbin/download-keys.py"
 
   - name: Remove crontab entry for extract-keys.py
