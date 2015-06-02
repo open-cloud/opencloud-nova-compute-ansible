@@ -112,6 +112,13 @@ def of_flush_br_int(int_br_lan_port):
     print cmd
     subprocess.check_call(cmd)
 
+def check_bridge(tap_iface, bridge):
+    cmd = ['/usr/bin/ovs-vsctl', 'port-to-br', tap_iface]
+    out = subprocess.check_output(cmd).rstrip()
+    if out == bridge:
+        return True
+    return False
+
 def connect_ports_to_lan(tap_ifaces):
     # Add flow rules to br-lan
     phy_br_lan_port = get_ofport('phy-br-lan')
@@ -124,6 +131,9 @@ def connect_ports_to_lan(tap_ifaces):
     of_flush_br_int(int_br_lan_port)
     tap_ports = []
     for tap_iface in tap_ifaces:
+        if not check_bridge(tap_iface, 'br-int'):
+            print "%s: Iface %s not connected to br-int, skipping" % (plugin, tap_iface)
+            continue
         print "%s: Add flow rules for %s" % (plugin, tap_iface)
 
         # Add flow rules to br-int
