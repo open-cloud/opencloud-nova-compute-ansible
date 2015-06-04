@@ -108,7 +108,7 @@ def of_allow_all_multi(bridge, inport, outports):
 
 def of_flush_br_int(int_br_lan_port):
     # Don't seem to need to flush forwarding rule from int_br_lan_port since it gets replaced later
-    cmd = ['/usr/bin/ovs-ofctl', '--strict', 'del-flows', 'br-int', 'out_port=%s,priority=10' % int_br_lan_port]
+    cmd = ['/usr/bin/ovs-ofctl', 'del-flows', 'br-int', 'out_port=%s' % int_br_lan_port]
     print cmd
     subprocess.check_call(cmd)
 
@@ -119,6 +119,15 @@ def check_bridge(tap_iface, bridge):
         return True
     return False
 
+def of_block_wan_bleed():
+    cmd = ['/usr/bin/ovs-ofctl', 'dump-flows', 'br-wan']
+    out = subprocess.check_output(cmd)
+    match = re.search("dl_vlan=([0-9]+) ", out)
+    if match:
+        wan_tag = match.groups()[0]
+        cmd = ['/usr/bin/ovs-ofctl', 'add-flow', 'br-lan', 'priority=20,dl_vlan=%s,action=drop' % wan_tag]
+        subprocess.check_call(cmd)
+
 def connect_ports_to_lan(tap_ifaces):
     # Add flow rules to br-lan
     phy_br_lan_port = get_ofport('phy-br-lan')
@@ -126,6 +135,7 @@ def connect_ports_to_lan(tap_ifaces):
 
     of_allow_all('br-lan', phy_br_lan_port, p1p1_port)
     of_allow_all('br-lan', p1p1_port, phy_br_lan_port)
+    of_block_wan_bleed()
 
     int_br_lan_port = get_ofport('int-br-lan')
     of_flush_br_int(int_br_lan_port)
