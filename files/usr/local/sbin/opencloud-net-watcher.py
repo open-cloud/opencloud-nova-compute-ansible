@@ -119,7 +119,7 @@ class OpenCloudNetWatcher:
     # Handle the case where Neutron has made a change that we need to undo
     # In particular, look for interfaces with the "LAN network" tag
     # If any are found, we will run opencloud-net.py to remove them
-    def action_needed():
+    def action_needed(self):
         action_needed = False
 
         cmd = ['/usr/bin/ovs-vsctl', 'list-ports', 'br-int']
