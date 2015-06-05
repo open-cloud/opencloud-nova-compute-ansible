@@ -125,6 +125,12 @@ def of_mark_vlan_tagged_packets(bridge, iface):
     print cmd
     subprocess.check_call(cmd)
 
+def of_forward_packets_from_bridge(bridge):
+    port = get_ofport('int-%s' % bridge)
+
+    cmd = ['/usr/bin/ovs-ofctl', 'add-flow', 'br-int', 'in_port=%s,priority=10,action=NORMAL' % port]
+    print cmd
+    subprocess.check_call(cmd)
 
 def of_forward_marked_packets(bridge, iface):
     port = get_ofport(iface)
@@ -165,6 +171,7 @@ def connect_ports_to_lan(tap_ifaces):
     of_forward_marked_packets('br-lan', 'phy-br-lan')
 
     of_flush_br_int()
+    of_forward_packets_from_bridge('br-lan')
 
     for tap_iface in tap_ifaces:
         if not check_bridge(tap_iface, 'br-int'):
