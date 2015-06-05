@@ -107,7 +107,7 @@ class OpenCloudNetWatcher:
 
         return something_changed
 
-    def get_lan_tag():
+    def get_lan_tag(self):
         tag = None
         cmd = ['/usr/bin/ovs-ofctl', 'dump-flows', 'br-lan']
         out = subprocess.check_output(cmd)
@@ -126,7 +126,7 @@ class OpenCloudNetWatcher:
         ifaces = subprocess.check_output(cmd).rstrip().split('\n')
         # print ifaces
 
-        lan_tag = get_lan_tag()
+        lan_tag = self.get_lan_tag()
         # print lan_tag
 
         for iface in ifaces:
