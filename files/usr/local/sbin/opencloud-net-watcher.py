@@ -133,6 +133,7 @@ class OpenCloudNetWatcher:
             cmd = ['/usr/bin/ovs-vsctl', 'get', 'Port', iface, 'tag']
             tag = subprocess.check_output(cmd).rstrip()
             if tag == lan_tag:
+                logging.info("Found interface %s with LAN tag %s" % (iface, lan_tag))
                 action_needed = True
 
         return action_needed
