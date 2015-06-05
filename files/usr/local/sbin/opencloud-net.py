@@ -87,30 +87,18 @@ def get_iface_by_mac(mac):
             return iface
     return None
 
+
 def get_ofport(iface):
     cmd = ['/usr/bin/ovs-vsctl', 'get', 'interface', iface, 'ofport']
     ofport = subprocess.check_output(cmd).rstrip()
     # print "%s: %s has ofport %s" % (plugin, iface, ofport)
     return ofport
 
-def of_allow_all(bridge, inport, outport):
-    cmd = ['/usr/bin/ovs-ofctl', 'add-flow', bridge, 'in_port=%s,priority=10,action=output:%s' % (inport, outport)]
-    print cmd
-    subprocess.check_call(cmd)
 
-def of_allow_all_multi(bridge, inport, outports):
-    action=""
-    for outport in outports:
-        action = action + "output:%s," % outport
-    cmd = ['/usr/bin/ovs-ofctl', 'add-flow', bridge, 'in_port=%s,priority=10,action=%s' % (inport, action)]
-    print cmd
-    subprocess.check_call(cmd)
+def of_flush_br_int():
+    # Clean up flows for interfaces that no longer exist!  May take some work...
+    pass
 
-def of_flush_br_int(int_br_lan_port):
-    # Don't seem to need to flush forwarding rule from int_br_lan_port since it gets replaced later
-    cmd = ['/usr/bin/ovs-ofctl', 'del-flows', 'br-int', 'out_port=%s' % int_br_lan_port]
-    print cmd
-    subprocess.check_call(cmd)
 
 def check_bridge(tap_iface, bridge):
     cmd = ['/usr/bin/ovs-vsctl', 'port-to-br', tap_iface]
@@ -119,40 +107,73 @@ def check_bridge(tap_iface, bridge):
         return True
     return False
 
-def of_block_wan_bleed():
-    cmd = ['/usr/bin/ovs-ofctl', 'dump-flows', 'br-wan']
-    out = subprocess.check_output(cmd)
-    match = re.search("dl_vlan=([0-9]+) ", out)
-    if match:
-        wan_tag = match.groups()[0]
-        cmd = ['/usr/bin/ovs-ofctl', 'add-flow', 'br-lan', 'priority=20,dl_vlan=%s,action=drop' % wan_tag]
-        subprocess.check_call(cmd)
 
+def remove_tag(iface):
+    cmd = ['/usr/bin/ovs-vsctl', 'set', 'port', iface, 'tag=[]']
+    print cmd
+    subprocess.check_call(cmd)
+
+
+def of_mark_vlan_tagged_packets(bridge, iface):
+    port = get_ofport(iface)
+
+    cmd = ['/usr/bin/ovs-ofctl', 'add-flow', bridge, 'in_port=%s,priority=11,dl_vlan=0xffff,action=drop' % port]
+    print cmd
+    subprocess.check_call(cmd)
+
+    cmd = ['/usr/bin/ovs-ofctl', 'add-flow', bridge, 'in_port=%s,priority=10,action=mod_vlan_pcp:1,NORMAL' % port]
+    print cmd
+    subprocess.check_call(cmd)
+
+
+def of_forward_marked_packets(bridge, iface):
+    port = get_ofport(iface)
+
+    # Forward packets with pcp=1
+    cmd = ['/usr/bin/ovs-ofctl', 'add-flow', bridge, 'in_port=%s,priority=11,dl_vlan_pcp=1,action=mod_vlan_pcp:0,NORMAL' % port]
+    print cmd
+    subprocess.check_call(cmd)
+
+    # Drop the rest
+    cmd = ['/usr/bin/ovs-ofctl', 'add-flow', bridge, 'in_port=%s,priority=10,action=drop' % port]
+    print cmd
+    subprocess.check_call(cmd)
+
+
+# We want to pass all VLAN-tagged packets between interfaces connected to the LAN network
+# and port p1p1.  Here's how this is currently implemented:
+#
+# Outgoing packets
+# ----------------
+# For each tap interface on br-int associated with LAN network:
+#  * Untag the interface
+#  * Drop all untagged packets coming from the interface
+#  * Mark tagged packets by changing dl_vlan_pcp to 1 (default is 0)
+#
+# At br-lan:
+#  * Drop all packets that are not marked (prevent bleeding from other networks)
+#  * Otherwise remove mark and forward packet normally
+#
+# Incoming packets
+# ----------------
+# Nothing special needs to happen for incoming packets.  They'll get forwarded by
+# the rules already in place.  The interfaces in the VMs will filter them by VLAN tag
+# (instead of this filtering happening at the tagged port).
+#
 def connect_ports_to_lan(tap_ifaces):
     # Add flow rules to br-lan
-    phy_br_lan_port = get_ofport('phy-br-lan')
-    p1p1_port = get_ofport('p1p1')
+    of_forward_marked_packets('br-lan', 'phy-br-lan')
 
-    of_allow_all('br-lan', phy_br_lan_port, p1p1_port)
-    of_allow_all('br-lan', p1p1_port, phy_br_lan_port)
-    of_block_wan_bleed()
+    of_flush_br_int()
 
-    int_br_lan_port = get_ofport('int-br-lan')
-    of_flush_br_int(int_br_lan_port)
-    tap_ports = []
     for tap_iface in tap_ifaces:
         if not check_bridge(tap_iface, 'br-int'):
             print "%s: Iface %s not connected to br-int, skipping" % (plugin, tap_iface)
             continue
         print "%s: Add flow rules for %s" % (plugin, tap_iface)
 
-        # Add flow rules to br-int
-        tap_port = get_ofport(tap_iface)
-        tap_ports.append(tap_port)
-        of_allow_all('br-int', tap_port, int_br_lan_port)
-    # This is just acting like a dumb bridge right now
-    # Could add dest MAC addresses or VLANs as an optimization
-    of_allow_all_multi('br-int', int_br_lan_port, tap_ports)
+        remove_tag(tap_iface)
+        of_mark_vlan_tagged_packets('br-int', tap_iface)
 
 
 # Should possibly be using python-iptables for this stuff
