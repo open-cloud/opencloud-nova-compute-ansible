@@ -9,6 +9,7 @@ import json
 import logging
 import optparse
 import os
+import re
 import sys
 import subprocess
 import time
@@ -106,9 +107,39 @@ class OpenCloudNetWatcher:
 
         return something_changed
 
+    def get_lan_tag():
+        tag = None
+        cmd = ['/usr/bin/ovs-ofctl', 'dump-flows', 'br-lan']
+        out = subprocess.check_output(cmd)
+        match = re.search("dl_vlan=([0-9]+) ", out)
+        if match:
+            tag = match.groups()[0]
+        return tag
+
+    # Handle the case where Neutron has made a change that we need to undo
+    # In particular, look for interfaces with the "LAN network" tag
+    # If any are found, we will run opencloud-net.py to remove them
+    def action_needed():
+        action_needed = False
+
+        cmd = ['/usr/bin/ovs-vsctl', 'list-ports', 'br-int']
+        ifaces = subprocess.check_output(cmd).rstrip().split('\n')
+        # print ifaces
+
+        lan_tag = get_lan_tag()
+        # print lan_tag
+
+        for iface in ifaces:
+            cmd = ['/usr/bin/ovs-vsctl', 'get', 'Port', iface, 'tag']
+            tag = subprocess.check_output(cmd).rstrip()
+            if tag == lan_tag:
+                action_needed = True
+
+        return action_needed
+
     def run_once(self):
         try:
-            if self.did_something_change():
+            if self.did_something_change() or self.action_needed():
                 logging.info("something changed - running opencloud-net.py")
                 os.system("/usr/local/sbin/opencloud-net.py")
             else:
