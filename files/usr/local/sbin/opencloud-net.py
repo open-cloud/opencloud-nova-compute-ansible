@@ -55,6 +55,7 @@ neutron_auth_url = None
 neutron_username = None
 neutron_password = None
 neutron_tenant_name = None
+neutron_endpoint_url = None
 
 # Pretty stupid right now, but should get the job done
 def set_ip_address(dev, addr, cidr):
@@ -261,7 +262,8 @@ def get_local_neutron_ports():
         neutron = client.Client(username=neutron_username,
                                 password=neutron_password,
                                 tenant_name=neutron_tenant_name,
-                                auth_url=neutron_auth_url)
+                                auth_url=neutron_auth_url,
+                                endpoint_url=neutron_endpoint_url)
         ports = neutron.list_ports(id=port_ids)['ports']
 
     return ports
@@ -346,7 +348,8 @@ def get_net_id_by_name(name):
     neutron = client.Client(username=neutron_username,
                             password=neutron_password,
                             tenant_name=neutron_tenant_name,
-                            auth_url=neutron_auth_url)
+                            auth_url=neutron_auth_url,
+                            endpoint_url=neutron_endpoint_url)
 
     net = neutron.list_networks(name=name)
     net_id = net['networks'][0]['id']
@@ -357,7 +360,8 @@ def get_subnet_network(net_id):
     neutron = client.Client(username=neutron_username,
                             password=neutron_password,
                             tenant_name=neutron_tenant_name,
-                            auth_url=neutron_auth_url)
+                            auth_url=neutron_auth_url,
+                            endpoint_url=neutron_endpoint_url)
 
     subnets = neutron.list_subnets(network_id=net_id)
     
@@ -383,15 +387,17 @@ def start():
     global neutron_password
     global neutron_tenant_name
     global neutron_auth_url
+    global neutron_endpoint_url
 
     print("%s: plugin starting up..." % plugin)
 
     parser = ConfigParser()
     parser.read("/etc/nova/nova.conf")
-    neutron_username = parser.get("DEFAULT", "neutron_admin_username")
-    neutron_password = parser.get("DEFAULT", "neutron_admin_password")
-    neutron_tenant_name = parser.get("DEFAULT", "neutron_admin_tenant_name")
-    neutron_auth_url = parser.get("DEFAULT", "neutron_admin_auth_url")
+    neutron_username = parser.get("neutron", "admin_username")
+    neutron_password = parser.get("neutron", "admin_password")
+    neutron_tenant_name = parser.get("neutron", "admin_tenant_name")
+    neutron_auth_url = parser.get("neutron", "admin_auth_url")
+    neutron_endpoint_url = parser.get("neutron", "url")
 
 def main(argv):
     global nat_net_id
@@ -439,7 +445,7 @@ def main(argv):
 
     # Process Public networks
     # Need iptables rule to block requests from outside...
-    if site_net_id:
+    if site_net_id and site_net_dev:
         write_dnsmasq_hostsfile(site_net_dev, ports, site_net_id)
         (ipaddr, cidr) = get_addrinfo(site_net_dev)
 
