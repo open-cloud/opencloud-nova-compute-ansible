@@ -15,7 +15,7 @@ chain of the nat table. The chain is flushed and rebuilt every time
 the plugin runs to avoid stale rules.  This plugin also sets up the
 MASQ rule in the POSTROUTING chain.
 
-NOTES: 
+NOTES:
 * Currently the port forwarding rules are driven from a per-node config
   file, not from state in Neutron
 """
@@ -28,6 +28,7 @@ import subprocess, signal
 import json
 from ConfigParser import ConfigParser
 import socket, netifaces, netaddr
+import urllib2
 
 # Neutron modules
 from neutronclient.v2_0 import client
@@ -56,6 +57,9 @@ neutron_username = None
 neutron_password = None
 neutron_tenant_name = None
 neutron_endpoint_url = None
+xos_api = None
+
+hostname = socket.gethostname()
 
 # Pretty stupid right now, but should get the job done
 def set_ip_address(dev, addr, cidr):
@@ -66,7 +70,7 @@ def set_ip_address(dev, addr, cidr):
         subprocess.call(cmd)
     except:
         pass
-        
+
 def get_addrinfo(ifname):
     addrs = netifaces.ifaddresses(ifname)
     ipinfo = addrs[socket.AF_INET][0]
@@ -159,7 +163,7 @@ def dnsmasq_running(dev):
     except:
         pass
     return False
-    
+
 def dnsmasq_remove_lease(dev, ip, mac):
     cmd = ['/usr/bin/dhcp_release', dev, ip, mac]
     try:
@@ -248,7 +252,7 @@ def get_local_neutron_ports():
     ports = []
 
     # Get local information for VM interfaces from OvS
-    ovs_out = subprocess.check_output(['/usr/bin/ovs-vsctl', '-f', 'json', 'find', 
+    ovs_out = subprocess.check_output(['/usr/bin/ovs-vsctl', '-f', 'json', 'find',
                                        'Interface', 'external_ids:iface-id!="absent"'])
     records = convert_ovs_output_to_dict(ovs_out)
 
@@ -273,14 +277,14 @@ def get_local_neutron_ports():
 # that the IP address assigned by Neutron appears on NAT interface.
 def write_dnsmasq_hostsfile(dev, ports, net_id):
     print("%s: Writing hostsfile for %s" % (plugin, dev))
-    
+
     masqfile = get_hostsfile(dev)
     masqdir = os.path.dirname(masqfile)
     if not os.path.exists(masqdir):
         os.makedirs(masqdir)
-       
+
     # Clean up old leases in the process
-    leases = {} 
+    leases = {}
     leasefile = get_leasefile(dev)
     try:
         f = open(leasefile, 'r')
@@ -293,7 +297,7 @@ def write_dnsmasq_hostsfile(dev, ports, net_id):
         f.close()
     except:
         pass
-        
+
     f = open(masqfile, 'w')
     for port in ports:
         if port['network_id'] == net_id:
@@ -318,31 +322,49 @@ def add_fw_rule(protocol, fwport, ipaddr):
                                       '-j', 'DNAT', '--to-destination', ipaddr])
 
 # Set up iptables rules in the 'opencloud-net' chain based on
-# the nat:forward_ports field in the Port record.
-def set_up_port_forwarding(dev, ports):
-    if os.path.exists('/usr/local/etc/portfwd.cfg'):
-        try:
-            with open('/usr/local/etc/portfwd.cfg', 'r') as fp:
-                for line in fp:
-                    try:
-                        (protocol, port, ipaddr) = line.strip().split()
-                        if protocol in ['tcp', 'udp']:
-                            add_fw_rule(protocol, port, ipaddr)
-                    except:
-                        pass
+# information queried diretly from XOS
+def set_up_port_forwarding():
+    # Call XOS REST API
+    try:
+        urlCmd = xos_api + "/xoslib/portforwarding/?node_name=%s" % hostname
+        req = urllib2.urlopen(urlCmd)
+        response = req.read()
+    except:
+        print "%s: Exception: Could not contact XOS at %s" % (plugin, xos_api)
+        return
+
+    # Parse json
+    fwdinfo = json.loads(response)
+
+    for fwd in fwdinfo:
+        try: fwd['id']
         except:
-            print("%s: Could not read port forward file" % plugin)
+            print "%s: Exception: Unexpected data from XOS: %s" % (plugin, fwd)
+            continue
+
+        try:
+            if not fwd['ip'].startswith("172.16"):
+                # Only forward ports for NAT interface
+                # Change this to actually look at the NAT subnet, instead of hardcoding
+                print "%s: Skipping Port %s with IP address %s" % (plugin, fwd['id'], fwd['ip'])
+                continue
+        except:
+            print "%s: Exception: Port %s does not have an IP address" % (plugin, fwd['id'])
+            continue
+
+        try:
+            portlist = fwd['ports'].split(',')
+            for entry in portlist:
+                (protocol, port) = entry.strip().replace('/',' ').split(' ')
+                protocol = protocol.lower()
+                if protocol not in ["tcp", "udp"]:
+                    print "%s: Exception: Port %s unknown protocol %s" % (plugin, fwd['id'], protocol)
+                    continue
+                add_fw_rule(protocol, port, fwd['ip'])
+        except:
+            print "%s: Exception: Port %s malformed (protocol port) tuple" % (plugin, fwd['id'])
             pass
 
-    for port in ports:
-        if (port['network_id'] == nat_net_id) and port.get('nat:forward_ports',None):
-            for fw in port['nat:forward_ports']:
-                ipaddr = port['fixed_ips'][0]['ip_address']
-                protocol = fw['l4_protocol']
-                fwport = fw['l4_port']
-
-                #unfilter_ipaddr(dev, ipaddr)
-                add_fw_rule(protocol, fwport, ipaddr)
 
 def get_net_id_by_name(name):
     neutron = client.Client(username=neutron_username,
@@ -364,12 +386,12 @@ def get_subnet_network(net_id):
                             endpoint_url=neutron_endpoint_url)
 
     subnets = neutron.list_subnets(network_id=net_id)
-    
+
     ipaddr = subnets['subnets'][0]['gateway_ip']
     cidr = subnets['subnets'][0]['cidr']
 
     return (ipaddr,cidr)
-    
+
 def block_remote_dns_queries(ipaddr, cidr):
     for proto in ['tcp', 'udp']:
         add_iptables_rule('filter', 'INPUT',
@@ -388,6 +410,7 @@ def start():
     global neutron_tenant_name
     global neutron_auth_url
     global neutron_endpoint_url
+    global xos_api
 
     print("%s: plugin starting up..." % plugin)
 
@@ -398,6 +421,7 @@ def start():
     neutron_tenant_name = parser.get("neutron", "admin_tenant_name")
     neutron_auth_url = parser.get("neutron", "admin_auth_url")
     neutron_endpoint_url = parser.get("neutron", "url")
+    xos_api = parser.get("DEFAULT", "xos_api_url")
 
 def main(argv):
     global nat_net_id
@@ -440,7 +464,7 @@ def main(argv):
     # Process Private-Nat networks
     add_iptables_masq(nat_net_dev, nat_cidr)
     write_dnsmasq_hostsfile(nat_net_dev, ports, nat_net_id)
-    set_up_port_forwarding(nat_net_dev, ports)
+    set_up_port_forwarding()
     start_dnsmasq(nat_net_dev, nat_ip_addr, authoritative=True)
 
     # Process Public networks
