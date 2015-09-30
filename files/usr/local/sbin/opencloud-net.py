@@ -71,6 +71,13 @@ def set_ip_address(dev, addr, cidr):
     except:
         pass
 
+def interface_up(dev):
+    cmd = ["/sbin/ip", "link", "set", "dev", dev, "up"]
+    try:
+        subprocess.call(cmd)
+    except:
+        pass
+
 def get_addrinfo(ifname):
     addrs = netifaces.ifaddresses(ifname)
     ipinfo = addrs[socket.AF_INET][0]
@@ -460,6 +467,7 @@ def main(argv):
     # Set IP address on br-nat if necessary
     (nat_ip_addr, nat_cidr) = get_subnet_network(nat_net_id)
     set_ip_address(nat_net_dev, nat_ip_addr, nat_cidr)
+    interface_up(nat_net_dev)
 
     # Process Private-Nat networks
     add_iptables_masq(nat_net_dev, nat_cidr)
