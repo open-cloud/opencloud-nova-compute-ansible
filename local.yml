@@ -6,7 +6,7 @@
 
   - name: Package install
     apt: name={{ item }} state=present update_cache=yes
-    with_items: 
+    with_items:
       - python-netifaces
       - python-netaddr
       - dnsmasq-utils
@@ -17,7 +17,7 @@
       dest={{ item.name }}
       owner=root group=root
       mode={{ item.mode }}
-    with_items: 
+    with_items:
     - name: /usr/local/sbin/opencloud-net.py
       mode: 755
     - name: /usr/local/sbin/opencloud-net-watcher.py
@@ -26,7 +26,7 @@
       mode: 755
     - name: /usr/local/sbin/findmyip.py
       mode: 755
-    - name: /usr/local/sbin/extract-keys.py
+    - name: /usr/local/sbin/download-keys.py
       mode: 755
 
   - name: Libvirt hooks
@@ -47,14 +47,20 @@
     notify:
     - restart ssh
 
-  - name: create supermin appliance
-    shell: update-guestfs-appliance
-      creates=/usr/lib/guestfs/supermin.d/base.img
+#  - name: create supermin appliance
+#    shell: update-guestfs-appliance
+#      creates=/usr/lib/guestfs/supermin.d/base.img
 
   - name: crontab entry for extract-keys.py
     cron: name="extract keys"
       minute="*/5"
       job="/usr/local/sbin/extract-keys.py"
+      state=absent
+
+  - name: crontab entry for download-keys.py
+    cron: name="download keys"
+      minute="*/2"
+      job="/usr/local/sbin/download-keys.py"
 
   - name: Enable IP forwwarding
     lineinfile: dest=/etc/sysctl.conf
