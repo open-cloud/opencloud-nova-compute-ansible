@@ -21,10 +21,10 @@ class OpenCloudNetWatcher:
         self.ports = {}
         parser = ConfigParser()
         parser.read("/etc/nova/nova.conf")
-        self.neutron_username = parser.get("DEFAULT", "neutron_admin_username")
-        self.neutron_password = parser.get("DEFAULT", "neutron_admin_password")
-        self.neutron_tenant_name = parser.get("DEFAULT", "neutron_admin_tenant_name")
-        self.neutron_auth_url = parser.get("DEFAULT", "neutron_admin_auth_url")
+        self.neutron_username = parser.get("neutron", "admin_username")
+        self.neutron_password = parser.get("neutron", "admin_password")
+        self.neutron_tenant_name = parser.get("neutron", "admin_tenant_name")
+        self.neutron_auth_url = parser.get("neutron", "admin_auth_url")
 
         if daemonize:
             self.daemon()
