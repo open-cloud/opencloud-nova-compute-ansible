@@ -333,7 +333,7 @@ def add_fw_rule(protocol, fwport, ipaddr):
 def set_up_port_forwarding():
     # Call XOS REST API
     try:
-        urlCmd = xos_api + "/xoslib/portforwarding/?node_name=%s" % hostname
+        urlCmd = xos_api + "/api/utility/portforwarding/?node_name=%s" % hostname
         req = urllib2.urlopen(urlCmd)
         response = req.read()
     except:

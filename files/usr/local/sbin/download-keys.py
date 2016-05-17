@@ -15,7 +15,7 @@ xosapi = Config.get("DEFAULT", "xos_api_url")
 hostname = socket.gethostname()
 
 # Call XOS REST API
-urlCmd = xosapi + "/xoslib/sshkeys/?node_name=%s" % hostname
+urlCmd = xosapi + "/api/utility/sshkeys/?node_name=%s" % hostname
 req = urllib2.urlopen(urlCmd)
 response = req.read()
 
